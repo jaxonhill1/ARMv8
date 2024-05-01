@@ -1,0 +1,152 @@
+// include stdio from the C library
+// add this to top of file
+#include <stdio.h>
+
+
+// QUESTION SEVEN ---------------------------------------------------------------------------------------
+
+// int sum_array(int arr[], int startIndex, int endIndex)
+// solve recursively
+// x0, x1, x2
+.global sum_array
+sum_array:
+        // copy x29, x30
+        stp     x29, x30, [sp, #-16]!
+        // prolog
+        sub     sp, sp, 32      // move stack pointer
+        str     x19, [sp]
+        str     x20, [sp, 8]
+        str     x21, [sp, 16]
+        str     x22, [sp, 24]
+
+        // store passed arguments locally
+        mov     x19, x0
+        mov     x20, x1
+        mov     x21, x2
+
+
+        // base case
+        // if start index > stop index
+        cmp     x20, x21
+        bgt     base_case
+
+        // load value at current index
+        ldr     w6, [x19, x20, lsl #2]
+
+        // increment start index
+        add     x20, x20, #1    // startIndex ++
+        // recursive call
+        mov     x0, x19         // move array pointer back into 0
+        mov     x1, x20
+        mov     x2, x21
+        bl      sum_array       // sum_array(array, startIndex + 1, endIndex)
+
+        // after all the functions call, add the sum together
+        add     x0, x0, x6      // add the current index value + returned index value
+
+        // epilog
+        ldr     x19, [sp]
+        ldr     x20, [sp, 8]
+        ldr     x21, [sp, 16]
+        ldr     x22, [sp, 24]
+        add     sp, sp, 32
+
+        ldp     x29, x30, [sp], #16
+
+        ret
+
+base_case:
+        // return 0 if startIndex > endIndex
+        mov     x0, #0
+        ret
+
+
+
+// QUESTION TWO -----------------------------------------------------------------------------------------
+
+.section .rodata
+formatted_string:
+        .asciz "%5d"
+newline_string:
+        .asciz "\n"
+add_tab:
+        .asciz "\t"
+
+// void print_array(int arr[], int sizeofarray)
+
+.section .text
+.global print_array
+print_array:
+        // copy x29, x30
+        stp     x29, x30, [sp, #-16]!
+        // prolog
+        sub     sp, sp, 48      // move stack pointer
+        str     x19, [sp, 8]
+        str     x20, [sp, 16]
+        str     x21, [sp, 24]
+        str     x22, [sp, 32]
+
+        mov     x19, x0         // array to be printed
+        mov     x20, x1         // num of elements to be printed
+        mov     x21, #0         // element printed counter
+        mov     x22, #0         // inner counter
+
+
+print_loop:
+        // first, check the outer counter so we don't print extra elements
+        cmp     x21, x20
+        bge     break_print_loop
+
+        // next, check the inner counter, if x22 == 5, break out of inner loop
+        mov     x6, #5
+        cmp     x22, x6
+        bge     break_print_inner
+
+        // increment the counters since we're about to print an element
+        add     x21, x21, #1    // outer counter ++
+        add     x22, x22, #1    // inner counter ++
+
+        // else {
+        // pull the current element from the array, store in x1 pending printf() call
+        ldr     w1, [x19, x21, lsl 2]
+        // move the address of format string into x0
+        adrp    x0, formatted_string
+        add     x0, x0, :lo12:formatted_string          // this adds the lower 12 bits of the address to get the full address
+
+        // call printf(formatString, printArg)
+        bl      printf
+
+        // now print a tab after each element
+        adrp    x0, add_tab
+        add     x0, x0, :lo12:add_tab
+        bl      printf
+
+        b       print_loop
+
+break_print_inner:
+        // 5 elements printed, print a newline
+        adrp    x0, newline_string
+        add     x0, x0, :lo12:newline_string
+        bl      printf
+
+        // reset inner counter
+        mov     x22, #0
+
+        b print_loop
+
+break_print_loop:
+        // print loop finished, end with newline
+        adrp    x0, newline_string
+        add     x0, x0, :lo12:newline_string
+        bl      printf
+
+        // epilog
+        ldr     x19, [sp, 8]
+        ldr     x20, [sp, 16]
+        ldr     x21, [sp, 24]
+        ldr     x22, [sp, 32]
+        add     sp, sp, 48      // reset stack pointer
+
+        ldp     x29, x30, [sp], #16
+
+        ret
