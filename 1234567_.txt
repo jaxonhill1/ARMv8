@@ -1,0 +1,604 @@
+// main code body for ARM-3 HW
+
+// include stdio from the C library
+#include <stdio.h>
+
+.section .text
+.global init_array
+.global rand
+
+.section ".bss"
+array:
+        .skip 80        // reserve 200 bytes for int array of size 50
+copied_array:
+        .skip 80        // another 200 bytes for matching array
+small_array:
+        .skip 12
+
+
+.section .data
+a: .word 10
+b: .word 50
+
+.section .text
+.global main
+
+main:
+        bl      debug
+
+        mov     x8, #93
+        svc     0
+
+debug:
+        // bump stack
+        sub     sp, sp, 256
+        str     x30, [sp]
+
+
+        // call init_array
+        adr     x0, array       // place memory location into x0
+        mov     x1, #20
+        bl      init_array
+        // init small_array for use debugging
+        adr     x0, small_array
+        mov     x1, #3
+        bl      init_array
+
+
+        // call print_array (test both print_array and init_array)
+        adr     x0, array
+        mov     x1, #20         // print x elements
+        bl      print_array
+        bl      debug_print_newline
+
+
+        // call copy_array
+        adr     x0, copied_array
+        adr     x1, array
+        mov     x2, #20
+        bl      copy_array
+        // print copied array
+        adr     x0, copied_array
+        mov     x1, #20
+        bl      print_array
+        bl      debug_print_newline
+
+
+        // call sum_array
+        adr     x0, small_array
+        mov     x1, #0
+        mov     x2, #2
+        bl      sum_array
+        // print the sum
+        bl      debug_print_value
+        bl      debug_print_newline
+
+
+        // call average - calls sum_array internally
+        adr     x0, array
+        mov     x1, #2
+        bl      average
+        // print the average - returned in x0
+        bl      debug_print_value
+        bl      debug_print_newline
+
+
+        // call swap
+        adr     x0, a
+        adr     x1, b
+        bl      swap
+        // print a's swapped value, if a == 50 it worked
+        ldr     x0, a
+        bl      debug_print_value
+        bl      debug_print_newline
+        bl      debug_print_newline
+
+
+        // call selection_sort on an array
+        adr     x0, small_array
+        mov     x1, #3
+        bl      selection_sort
+        // print the sorted array
+        adr     x0, small_array
+        mov     x1, #3
+        bl      print_array
+        bl      debug_print_newline
+
+
+
+
+        mov     x8, #93                 // service command code 93 to terminate the program
+        svc     0                       // call linux to terminate the program
+
+
+// some debug functions
+debug_print_newline:
+        // prolog
+        stp     x29, x30, [sp, #-16]!
+
+        // print newline
+        adrp    x0, newline_string
+        add     x0, x0, :lo12:newline_string
+        bl      printf
+
+        // epilog
+        ldp     x29, x30, [sp], #16
+
+        ret
+
+debug_print_value:
+        // prolog
+        stp     x29, x30, [sp, #-16]!
+
+        // print single value - should be passed in x0
+        mov     x1, x0
+        adrp    x0, formatted_string
+        add     x0, x0, :lo12:formatted_string
+
+        bl      printf
+
+        // epilog
+        ldp     x29, x30, [sp], #16
+
+        ret
+
+
+// QUESTION SEVEN ---------------------------------------------------------------------------------------
+
+// int sum_array(int arr[], int startIndex, int endIndex)
+// solve recursively
+// x0, x1, x2
+.global sum_array
+sum_array:
+        // copy x29, x30
+        stp     x29, x30, [sp, #-16]!
+        // prolog
+        sub     sp, sp, 32      // move stack pointer
+        str     x19, [sp]
+        str     x20, [sp, 8]
+        str     x21, [sp, 16]
+        str     x22, [sp, 24]
+
+        // store passed arguments locally
+        mov     x19, x0
+        mov     x20, x1
+        mov     x21, x2
+
+
+        // base case
+        // if start index > stop index
+        cmp     x20, x21
+        bgt     base_case
+
+        // load value at current index
+        ldr     w6, [x19, x20, lsl #2]
+
+        // increment start index
+        add     x20, x20, #1    // startIndex ++
+        // recursive call
+        mov     x0, x19         // move array pointer back into 0
+        mov     x1, x20
+        mov     x2, x21
+        bl      sum_array       // sum_array(array, startIndex + 1, endIndex)
+
+        // after all the functions call, add the sum together
+        add     x0, x0, x6      // add the current index value + returned index value
+
+        // epilog
+        ldr     x19, [sp]
+        ldr     x20, [sp, 8]
+        ldr     x21, [sp, 16]
+        ldr     x22, [sp, 24]
+        add     sp, sp, 32
+
+        ldp     x29, x30, [sp], #16
+
+        ret
+
+base_case:
+        // return 0 if startIndex > endIndex
+        mov     x0, #0
+        ret
+
+
+
+// QUESTION SIX -----------------------------------------------------------------------------------------
+
+// int average(int arr[], int n)
+// takes in an array head and the size of the array
+// x0 = arr[]
+// x1 = int n
+
+.global average
+average:
+        // copy x29, x30
+        stp     x29, x30, [sp, #-16]!
+        // prolog
+        sub     sp, sp, 16      // move stack pointer
+        str     x19, [sp]
+        str     x20, [sp, 8]
+
+        mov     x19, x0
+        mov     x20, x1
+
+        // main body
+        // start by calling sum_array(arr[], startIndex, endIndex)
+        mov     x0, x19
+        mov     x1, #0          // start from index 0
+        sub     x2, x20, #1     // insert arraySize - 1 = last index
+        bl      sum_array
+
+        // divide to get average
+        udiv    x0, x0, x20     // x0 = sum / x20 (size of array[])
+
+        // epilog
+        // x0 already contains return value
+        ldr     x19, [sp]
+        ldr     x20, [sp, 8]
+        add     sp, sp, 16      // reset stack pointer
+
+        ldp     x29, x30, [sp], #16
+
+        ret
+
+
+// QUESTION FIVE ----------------------------------------------------------------------------------------
+
+// void selection_sort(int arr[], int n = arraySize)
+// x0 = array address
+// x1 = size of array
+
+.section .text
+.global selection_sort
+
+selection_sort:
+
+        // copy x29, x30
+        stp     x29, x30, [sp, #-16]!
+        // prolog
+        sub     sp, sp, 16      // move stack pointer
+        str     x19, [sp]
+        str     x20, [sp, 8]
+
+        mov     x19, x0
+        mov     x20, x1
+
+        // main body --------------------------------------------------
+
+        // Check if array size is less than 2
+        mov     x5, #2
+        cmp     x1, x5
+        blt     end_sort
+
+        // Set initial index i (outer loop)
+        mov     x2, #0                                                          // x2 = i
+
+sort_outer_loop:
+        // Set the current minimum to the current i position
+        mov     x3, x2                                                          // x3 = min_index
+        add     x4, x0, x2, lsl #2                                              // x4 is the address of arr[i]
+
+        // Initialize j = i (inner loop)
+        mov     x5, x2                                                          // x5 = j
+
+sort_inner_loop:
+        cmp     x5, x1       // Compare j with n
+        bgt     check_end_outer  // If j >= n, end inner loop
+
+        // Calculate address of arr[j] for comparison
+        add     x6, x0, x5, lsl #2                                              // x6 is the address of arr[j]
+
+        // Load values of arr[min_idx] and arr[j]
+        ldr     w7, [x4]                                                        // w7 = arr[min_idx]
+        ldr     w8, [x6]                                                        // w8 = arr[j]
+
+        // Compare to find new minimum
+        cmp     w7, w8
+        bgt     update_min   // If arr[min_idx] > arr[j], update min_idx
+        b       skip_update
+
+update_min:
+        // Update min_idx
+        mov     x3, x5
+        mov     x4, x6
+
+skip_update:
+        // Increment j and continue inner loop
+        add     x5, x5, #1
+        b       sort_inner_loop
+
+check_end_outer:
+        // Compare i with min_idx, if not the same, swap
+        cmp     x2, x3
+        beq     skip_swap
+
+        // Perform swap between arr[i] and arr[min_idx]
+        ldr     w9, [x4]     // w9 = arr[min_idx]
+        ldr     w10, [x0, x2, lsl #2]  // w10 = arr[i]
+        str     w9, [x0, x2, lsl #2]
+        str     w10, [x4]
+
+skip_swap:
+        // Increment i and continue outer loop
+        add     x2, x2, #1              // Increment i
+        cmp     x2, x1                  // Compare i with n (consider i reaches up to n-2)
+        blt     sort_outer_loop
+
+end_sort:
+        // epilog ------------------------------------------------------
+        ldr     x19, [sp]
+        ldr     x20, [sp, 8]
+        add     sp, sp, 16      // reset stack pointer
+
+        ldp     x29, x30, [sp], #16
+
+        ret
+
+
+
+// QUESTION FOUR ----------------------------------------------------------------------------------------
+
+// void swap(int *a, int *b)
+// x0 = *a
+// x1 = *b
+
+.section .text
+.global swap
+swap:
+        // copy x29, x30
+        stp     x29, x30, [sp, #-16]!
+        // prolog
+        sub     sp, sp, 16      // move stack pointer
+        str     x19, [sp]
+        str     x20, [sp, 8]
+
+        mov     x19, x0
+        mov     x20, x1
+
+        // pull values
+        ldr     x3, [x19]       // load the value at [*a] in x3 temporarily
+        ldr     x4, [x20]       // load the value at [*b]
+
+        // reassign those values
+        str     x3, [x20]       // store x3 into [*b]
+        str     x4, [x19]       // store x4 into [*a]
+
+        // epilog
+        ldr     x19, [sp]
+        ldr     x20, [sp, 8]
+        add     sp, sp, 16      // reset stack pointer
+
+        ldp     x29, x30, [sp], #16
+
+        ret
+
+// QUESTION THREE ---------------------------------------------------------------------------------------
+
+// void copy_array(int arr[] DESTINATION, int arr[] SOURCE, size of both arrays
+// x0 = dest
+// x1 = source
+// x2 = size
+
+.section .text
+.global copy_array
+
+copy_array:
+        // copy x29, x30
+        stp     x29, x30, [sp, #-16]!
+        // prolog
+        sub     sp, sp, 48      // move stack pointer
+        str     x19, [sp, 8]
+        str     x20, [sp, 16]
+        str     x21, [sp, 24]
+        str     x22, [sp, 32]
+
+        mov     x19, x0         // x19 = destination array pointer
+        mov     x20, x1         // x20 = source array pointer
+        mov     x21, x2         // x21 = size of arrays
+
+        mov     x22, #0         // counter
+
+copy_loop:
+        cmp     x22, x21        // compare counter to the passed size
+        bge     endcopyloop     // if counter >= array size, break loop
+
+        // if not, run loop
+        ldr     w2, [x20, x22, lsl 2]           // load from source array into w2
+        str     w2, [x19, x22, lsl 2]           // store into destination array
+
+        add     x22, x22, #1    // increment counter
+        b       copy_loop
+
+endcopyloop:
+        // epilog
+        ldr     x19, [sp, 8]
+        ldr     x20, [sp, 16]
+        ldr     x21, [sp, 24]
+        ldr     x22, [sp, 32]
+        add     sp, sp, 48      // reset stack pointer
+
+        ldp     x29, x30, [sp], #16
+
+        ret
+
+// QUESTION TWO -----------------------------------------------------------------------------------------
+
+.section .rodata
+formatted_string:
+        .asciz "%5d"
+newline_string:
+        .asciz "\n"
+add_tab:
+        .asciz "\t"
+
+// void print_array(int arr[], int sizeofarray)
+
+.section .text
+.global print_array
+print_array:
+        // copy x29, x30
+        stp     x29, x30, [sp, #-16]!
+        // prolog
+        sub     sp, sp, 48      // move stack pointer
+        str     x19, [sp, 8]
+        str     x20, [sp, 16]
+        str     x21, [sp, 24]
+        str     x22, [sp, 32]
+
+        mov     x19, x0         // array to be printed
+        mov     x20, x1         // num of elements to be printed
+        mov     x21, #0         // element printed counter
+        mov     x22, #0         // inner counter
+
+
+print_loop:
+        // first, check the outer counter so we don't print extra elements
+        cmp     x21, x20
+        bge     break_print_loop
+
+        // next, check the inner counter, if x22 == 5, break out of inner loop
+        mov     x6, #5
+        cmp     x22, x6
+        bge     break_print_inner
+
+        // increment the counters since we're about to print an element
+        add     x21, x21, #1    // outer counter ++
+        add     x22, x22, #1    // inner counter ++
+
+        // else {
+        // pull the current element from the array, store in x1 pending printf() call
+        ldr     w1, [x19, x21, lsl 2]
+        // move the address of format string into x0
+        adrp    x0, formatted_string
+        add     x0, x0, :lo12:formatted_string          // this adds the lower 12 bits of the address to get the full address
+
+        // call printf(formatString, printArg)
+        bl      printf
+
+        // now print a tab after each element
+        adrp    x0, add_tab
+        add     x0, x0, :lo12:add_tab
+        bl      printf
+
+        b       print_loop
+
+break_print_inner:
+        // 5 elements printed, print a newline
+        adrp    x0, newline_string
+        add     x0, x0, :lo12:newline_string
+        bl      printf
+
+        // reset inner counter
+        mov     x22, #0
+
+        b print_loop
+
+break_print_loop:
+        // print loop finished, end with newline
+        adrp    x0, newline_string
+        add     x0, x0, :lo12:newline_string
+        bl      printf
+
+        // epilog
+        ldr     x19, [sp, 8]
+        ldr     x20, [sp, 16]
+        ldr     x21, [sp, 24]
+        ldr     x22, [sp, 32]
+        add     sp, sp, 48      // reset stack pointer
+
+        ldp     x29, x30, [sp], #16
+
+        ret
+
+
+// QUESTION ONE -----------------------------------------------------------------------------------------
+
+// void init_array(int arr[], int n)
+// arr[] = the array to be initialized (address of array)
+// n = size of the array
+// x19 = array address
+// x20 = n = size of array
+// x21 = array counter
+init_array:
+        // prolog
+        sub     sp, sp, 48      // move stack pointer
+        str     x30, [sp]       // save x30
+        str     x29, [sp, 8]
+        str     x19, [sp, 16]
+        str     x20, [sp, 24]
+        str     x21, [sp, 32]
+
+        // main body
+        mov     x19, x0         // store address of array in x19
+        mov     x20, x1         // store size of array (n) in x20
+        mov     x21, #0         // loop control variable, begin at 0
+
+loop:
+        cmp     x21, x20        // compare counter to n (size of array)
+        bgt     done            // break loop if x21 >= x20
+
+        bl      rand            // otherwise, call random generator
+
+        str     w0, [x19, x21, lsl 2]   // store the returned byte in array[counter]
+        add     x21, x21, #1            // increment counter
+        b       loop
+
+done:
+        // epilog
+//      mov     x0, x19         // no return value for this function!
+        ldr     x30, [sp]       // restore x30, x19 - x21
+        ldr     x29, [sp, 8]
+        ldr     x19, [sp, 16]
+        ldr     x20, [sp, 24]
+        ldr     x21, [sp, 32]
+        add     sp, sp, 48      // reset stack pointer
+        ret
+
+// int rand()
+// takes no arguments, returns random integer between 0-255
+rand:
+        // prolog
+        sub     sp, sp, 32
+        str     x30, [sp]       // save x30 in [sp]
+        str     x29, [sp, 8]
+        str     x19, [sp, 16]
+        str     x20, [sp, 24]
+
+        // open /dev/urandom
+        mov     x0, #0          // clear x0, ready to accept file descriptor from READ operation
+        ldr     x1, =dev_urandom        // defined in .rodata
+        mov     x2, #0          // flags, 0 = readonly
+        mov     x8, #56         // syscall for openat
+        svc     #0
+
+        mov     x19, x0         // save file descriptor in x19
+
+        // read single byte from dev/urandom
+        mov     x0, x19         // file descriptor
+        sub     sp, sp, #16     // make space for one byte on stack
+        mov     x1, sp          // place buffer location into x1
+        mov     x2, #1          // number of bytes to read into x2
+        mov     x8, #63         // syscall: read
+        svc     #0              // execute system call
+
+        ldr     x20, [sp]       // save the returned byte into x20
+        add     sp, sp, #16     // move stack back
+
+        // close the file
+        mov     x0, x19
+        mov     x8, #57
+        svc     #0
+
+        // epilog
+        mov     x0, x20         // return the single byte read
+        ldr     x30, [sp]       // restore x30
+        ldr     x29, [sp, 8]
+        ldr     x19, [sp, 16]   // restore x19
+        ldr     x20, [sp, 24]   // restore x20
+        add     sp, sp, 32      // reset stack
+        ret
+
+// rand() rodata
+.section .rodata
+dev_urandom:
+        .asciz "/dev/urandom"
